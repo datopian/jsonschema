@@ -12,7 +12,7 @@ except ImportError:
 from jsonschema import _utils, _validators
 from jsonschema.compat import (
     Sequence, urljoin, urlsplit, urldefrag, unquote, urlopen,
-    str_types, int_types, iteritems, lru_cache,
+    Request, str_types, int_types, iteritems, lru_cache,
 )
 from jsonschema.exceptions import ErrorTree  # Backwards compat  # noqa: F401
 from jsonschema.exceptions import RefResolutionError, SchemaError, UnknownType
@@ -51,7 +51,7 @@ def validates(version):
     return _validates
 
 
-def create(meta_schema, validators=(), version=None, default_types=None):  # noqa: C901, E501
+def create(meta_schema, validators=(), version=None, default_types=None, headers=None):  # noqa: C901, E501
     if default_types is None:
         default_types = {
             u"array": list, u"boolean": bool, u"integer": int_types,
@@ -65,17 +65,18 @@ def create(meta_schema, validators=(), version=None, default_types=None):  # noq
         DEFAULT_TYPES = dict(default_types)
 
         def __init__(
-            self, schema, types=(), resolver=None, format_checker=None,
+            self, schema, types=(), headers=headers, resolver=None, format_checker=None,
         ):
             self._types = dict(self.DEFAULT_TYPES)
             self._types.update(types)
 
             if resolver is None:
-                resolver = RefResolver.from_schema(schema)
+                resolver = RefResolver.from_schema(schema, headers=headers)
 
             self.resolver = resolver
             self.format_checker = format_checker
             self.schema = schema
+
 
         @classmethod
         def check_schema(cls, schema):
@@ -266,6 +267,11 @@ class RefResolver(object):
             A cache that will be used for caching the results of
             resolved remote URLs.
 
+        headers (dict):
+
+            A dict that contains custom headers.
+            This is useful if the Schema URI uses some kind of authentication.
+
     """
 
     def __init__(
@@ -277,11 +283,14 @@ class RefResolver(object):
         handlers=(),
         urljoin_cache=None,
         remote_cache=None,
+        headers=None
     ):
         if urljoin_cache is None:
             urljoin_cache = lru_cache(1024)(urljoin)
         if remote_cache is None:
             remote_cache = lru_cache(1024)(self.resolve_from_url)
+        if headers is None:
+            headers = dict()
 
         self.referrer = referrer
         self.cache_remote = cache_remote
@@ -297,6 +306,7 @@ class RefResolver(object):
 
         self._urljoin_cache = urljoin_cache
         self._remote_cache = remote_cache
+        self._headers = headers
 
     @classmethod
     def from_schema(cls, schema, *args, **kwargs):
@@ -466,12 +476,16 @@ class RefResolver(object):
             # Requests has support for detecting the correct encoding of
             # json over http
             if callable(requests.Response.json):
-                result = requests.get(uri).json()
+                result = requests.get(uri, headers=self._headers).json()
             else:
-                result = requests.get(uri).json
+                result = requests.get(uri, headers=self._headers).json
         else:
             # Otherwise, pass off to urllib and assume utf-8
-            result = json.loads(urlopen(uri).read().decode("utf-8"))
+            # Setup custom headers for the request
+            req = Request(uri)
+            for key, val in self._headers.items():
+                req.add_header(key, val)
+            result = json.loads(urlopen(req).read().decode("utf-8"))
 
         if self.cache_remote:
             self.store[uri] = result

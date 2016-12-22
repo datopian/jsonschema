@@ -16,7 +16,7 @@ if PY3:
     from urllib.parse import (
         unquote, urljoin, urlunsplit, SplitResult, urlsplit as _urlsplit
     )
-    from urllib.request import urlopen
+    from urllib.request import urlopen, Request
     str_types = str,
     int_types = int,
     iteritems = operator.methodcaller("items")
@@ -27,7 +27,7 @@ else:
         urljoin, urlunsplit, SplitResult, urlsplit as _urlsplit # noqa
     )
     from urllib import unquote  # noqa
-    from urllib2 import urlopen  # noqa
+    from urllib2 import urlopen, Request  # noqa
     str_types = basestring
     int_types = int, long
     iteritems = operator.methodcaller("iteritems")
